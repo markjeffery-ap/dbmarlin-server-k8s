@@ -1,0 +1,113 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: dbmarlin-server
+spec:
+  serviceName: dbmarlin-service
+  replicas: 1
+  updateStrategy:
+    type: OnDelete
+  selector:
+    matchLabels:
+      app: dbmarlin-server
+  template:
+    metadata:
+      labels:
+        app: dbmarlin-server
+    spec:
+      terminationGracePeriodSeconds: 60
+      initContainers:
+      - name: dbmarlin-copy
+        image: dbmarlin/dbmarlin-server:latest
+        env:
+        - name: DBMARLIN_SIZE
+          value: Small
+        volumeMounts:
+        - mountPath: /opt/dbmarlin
+          name: dbmarlin-storage
+        command: ["/bin/bash", "-c"]
+        args:
+        - >
+          set -e;
+          echo 'Starting copy to /opt/dbmarlin/';
+          cp -r /dbmarlin-install/dbmarlin/* /opt/dbmarlin/;
+          echo 'Copy operation completed successfully';
+          cd /opt/dbmarlin;
+          echo 'Starting configuration DBmarlin';
+          ./configure.sh -a -n9090 -t9080 -p9070 -s${DBMARLIN_SIZE} -u;
+          echo 'Configuration completed successfully';
+      containers:
+        - name: dbmarlin-server
+          image: dbmarlin/dbmarlin-server:latest
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -e
+
+              [ -d /opt/dbmarlin/postgresql/data ] && chmod 750 /opt/dbmarlin/postgresql/data
+              [ -d /opt/dbmarlin/postgresql/15/data ] && chmod 750 /opt/dbmarlin/postgresql/15/data
+
+              /opt/dbmarlin/start.sh
+
+              current_file=""
+              last=0
+
+              while true; do
+                file="/opt/dbmarlin/tomcat/logs/localhost.$(date +%Y-%m-%d).log"
+
+                if [ "$file" != "$current_file" ]; then
+                  current_file="$file"
+                  last=0
+                fi
+
+                if [ -f "$file" ]; then
+                  total=$(wc -l < "$file")
+
+                  if [ "$total" -gt "$last" ]; then
+                    start=$((last + 1))
+                    sed -n "${start},${total}p" "$file"
+                    last=$total
+                  fi
+                fi
+
+                sleep 60
+              done
+          ports:
+            - name: web
+              containerPort: 9090
+            - name: tomcat
+              containerPort: 9080
+            - name: postgres
+              containerPort: 9070
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - /bin/bash
+                  - -c
+                  - /opt/dbmarlin/stop.sh >> /opt/dbmarlin/tomcat/logs/localhost.$(date +%Y-%m-%d).log 2>&1 && sleep 10
+          resources:
+            limits:
+              cpu: "1"
+              memory: "1024Mi"
+            requests:
+              cpu: "0.5"
+              memory: "256Mi"
+          livenessProbe:
+            tcpSocket:
+              port: 9080
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          readinessProbe:
+            tcpSocket:
+              port: 9080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          volumeMounts:
+            - name: dbmarlin-storage
+              mountPath: /opt/dbmarlin
+      volumes:
+        - name: dbmarlin-storage
+          persistentVolumeClaim:
+            claimName: dbmarlin-pvc
