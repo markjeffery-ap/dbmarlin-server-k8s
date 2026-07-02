@@ -19,10 +19,6 @@ kubectl apply -k k8s/overlays/stateful-localpath
 
 - The DBmarlin image contains `/dbmarlin-install/dbmarlin`.
 - DBmarlin runs from `/opt/dbmarlin`.
-- The preserved files are currently assumed to be:
-  - `/opt/dbmarlin/.htpasswd`
-  - `/opt/dbmarlin/nginx/conf/auth.conf`
-  - `/opt/dbmarlin/nginx/conf/ssl.conf`
 - The PVC is mounted at `/opt/dbmarlin`.
 - The local lab uses the `local-path` StorageClass.
 
