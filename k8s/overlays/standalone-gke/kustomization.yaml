@@ -3,7 +3,7 @@ kind: Kustomization
 
 resources:
   - ../../base
-  - ../../components/deployment
+  - ../../components/statefulset
 
 patches:
   - path: storageclass-patch.yaml
